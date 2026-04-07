@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 //import 'supabase_handler.dart';
+import 'map_screen.dart';
 import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -16,7 +17,7 @@ class _MainScreenState extends State<MainScreen> {
   static const List<Widget> _pages = [
     //PointsScreen(),  
     //ScannerScreen(), 
-    //MapsScreen(),    
+    MapScreen(),    
     ProfileScreen(),
   ]; 
 
