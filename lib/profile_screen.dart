@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'supabase_handler.dart';
 import 'auth_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,11 +19,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+    _cargarPreferenciasLocales();
   }
 
   Future<void> _loadProfile() async {
     try {
       final data = await _handler.getUserProfile();
+      debugPrint("================= $data");
       if (mounted) {
         setState(() {
           _userData = data;
@@ -30,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
+      debugPrint("========== $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -67,7 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _userData?['nombre_completo'] ?? 'Usuario',
+                        _userData?['nombre_usuario'] ?? 'Usuario',
                         style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                       ),
                       Text(
@@ -85,14 +89,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildProfileOption(
               icon: Icons.person_outline,
               title: 'Datos personales',
-              subtitle: 'Nombre, usuario y correo',
-              onTap: () { /* Abrir formulario de edición */ },
+              subtitle: 'Nombre y usuario',
+              onTap: _mostrarDialogoEdicion,
             ),
             _buildProfileOption(
               icon: Icons.notifications_none,
               title: 'Notificaciones',
               subtitle: 'Ajustes de alertas y avisos',
-              onTap: () { /* Ajustes de notificaciones */ },
+              onTap: _mostrarAjustesNotificaciones,
             ),
             _buildProfileOption(
               icon: Icons.lock_outline,
@@ -161,4 +165,141 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: onTap,
     );
   }
+
+  void _mostrarDialogoEdicion() {
+    // El controlador inicia con el nombre actual que ya tenemos en _userData
+    final TextEditingController nombreController = 
+        TextEditingController(text: _userData?['nombre_completo'] ?? '');
+    final TextEditingController userController = 
+        TextEditingController(text: _userData?['nombre_usuario'] ?? '');
+    var nme = _userData?['nombre_completo'];
+    var usr = _userData?['nombre_usuario'];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("Editar Datos Personales"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreController,
+              decoration: const InputDecoration(
+                labelText: "Nombre Completo",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: userController,
+              decoration: const InputDecoration(
+                labelText: "Nombre de Usuario",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const Text(
+              "Se ignorarán los campos vacios.",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            )
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+            onPressed: () async {
+              if (nombreController.text.trim().isNotEmpty){nme = nombreController.text.trim();}
+              if (userController.text.trim().isNotEmpty){usr = userController.text.trim();}
+              try {
+                await _handler.actualizarPerfil(
+                  nuevoNombre: nme,
+                  nuevoUsuario: usr,
+                );
+                if (!context.mounted) return;
+                if (mounted) {
+                  Navigator.pop(context); // Cierra el diálogo
+                  _loadProfile(); // Recarga los datos para que se vea el cambio
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Perfil actualizado correctamente"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint("Error al actualizar: $e");
+              }
+            },
+            child: const Text("Guardar", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _notifRecoleccion = true;
+  bool _notifAlertas = true;
+
+  // Carga los datos guardados en el disco
+  Future<void> _cargarPreferenciasLocales() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // Si es la primera vez (null), ponemos true por defecto
+      _notifRecoleccion = prefs.getBool('notif_recoleccion') ?? true;
+      _notifAlertas = prefs.getBool('notif_alertas') ?? true;
+    });
+  }
+
+  // Guarda los datos en el disco
+  Future<void> _guardarPreferencia(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  void _mostrarAjustesNotificaciones() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical( // <--- BorderRadius, no Radius
+          top: Radius.circular(20),          // <--- Aquí sí va Radius
+        ),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Notificaciones Locales", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                title: const Text("Días de Recolección"),
+                value: _notifRecoleccion,
+                onChanged: (bool value) {
+                  _guardarPreferencia('notif_recoleccion', value);
+                  setModalState(() => _notifRecoleccion = value);
+                  setState(() {}); // Actualiza la pantalla de fondo
+                },
+              ),
+              SwitchListTile(
+                title: const Text("Alertas Críticas"),
+                value: _notifAlertas,
+                onChanged: (bool value) {
+                  _guardarPreferencia('notif_alertas', value);
+                  setModalState(() => _notifAlertas = value);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 }

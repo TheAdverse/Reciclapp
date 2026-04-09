@@ -54,13 +54,29 @@ class SupabaseHandler {
     final user = supabase.auth.currentUser;
     if (user != null) {
       final data = await supabase
-          .from('Usuario')
+          .from('usuario')
           .select()
           .eq('id_usuario', user.id)
           .single();
       return data;
     }
     return null;
+  }
+
+  Future<void> actualizarPerfil({
+    required String nuevoNombre,
+    required String nuevoUsuario
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    await supabase
+        .from('usuario')
+        .update({
+          'nombre_completo': nuevoNombre,
+          'nombre_usuario': nuevoUsuario,
+        })
+        .eq('id_usuario', user.id);
   }
 
 }
