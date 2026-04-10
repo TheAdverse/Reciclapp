@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -13,84 +14,106 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final supabase = Supabase.instance.client;
-  List<Marker> _markers = [];
-  dynamic _centroSeleccionado; // Para guardar el centro que tocamos
-  final MapController _mapController = MapController(); // Para mover el mapa por código
-  LatLng? _ubicacionUsuario; // Variable para guardar tu posición
+  final MapController _mapController = MapController();
+  
+  // Estado del Mapa
+  List<Marker> _centrosMarkers = [];
+  LatLng? _ubicacionUsuario;
+  dynamic _centroSeleccionado;
+  
+  // Control de Streams
+  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
-    _fetchCentros(); // Carga los datos de Pachuca al iniciar
-    _obtenerUbicacionActual(); // Llamada al GPS
+    _fetchCentros();           // Trae los puntos de Pachuca desde Supabase
+    _configurarSeguimiento();  // Inicia el GPS en tiempo real
   }
 
-  Future<void> _obtenerUbicacionActual() async {
-    bool servicioHabilitado;
-    LocationPermission permiso;
+  @override
+  void dispose() {
+    // Cerramos el stream al salir para ahorrar batería
+    _positionStream?.cancel();
+    super.dispose();
+  }
 
-    // Verificar si el GPS está encendido
-    servicioHabilitado = await Geolocator.isLocationServiceEnabled();
-    if (!servicioHabilitado) return;
+  // --- LÓGICA DE UBICACIÓN ---
 
-    permiso = await Geolocator.checkPermission();
-    if (permiso == LocationPermission.denied) {
-      permiso = await Geolocator.requestPermission();
-      if (permiso == LocationPermission.denied) return;
+  Future<void> _configurarSeguimiento() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Verificar si el GPS está activo
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    // Gestionar permisos
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
     }
 
-    // Obtener la posición actual
-    Position position = await Geolocator.getCurrentPosition();
-    
-    setState(() {
-      _ubicacionUsuario = LatLng(position.latitude, position.longitude);
-      
-      // Movemos la cámara del mapa a tu ubicación
-      _mapController.move(_ubicacionUsuario!, 15); 
-      
-      // Agregamos un marcador azul para el usuario
-      _markers.add(
-        Marker(
-          point: _ubicacionUsuario!,
-          width: 60,
-          height: 60,
-          child: const Icon(Icons.my_location, color: Colors.blue, size: 40),
-        ),
-      );
+    if (permission == LocationPermission.deniedForever) return;
+
+    // Configurar el Stream (Se activa cada 5 metros)
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5, 
+      ),
+    ).listen((Position position) {
+      if (mounted) {
+        setState(() {
+          _ubicacionUsuario = LatLng(position.latitude, position.longitude);
+        });
+      }
     });
+
+    // Obtener posición inicial para centrar el mapa al abrir
+    try {
+      Position initialPos = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        _mapController.move(LatLng(initialPos.latitude, initialPos.longitude), 14);
+      }
+    } catch (e) {
+      debugPrint("Error obteniendo posición inicial: $e");
+    }
   }
 
-  // Función para traer datos de Supabase
+  // --- LÓGICA DE DATOS (SUPABASE) ---
+
   Future<void> _fetchCentros() async {
     try {
       final data = await supabase.from('centros_acopio').select();
       final List<dynamic> centros = data as List<dynamic>;
 
-      setState(() {
-        _markers = centros.map((centro) {
-          return Marker(
-            point: LatLng(centro['latitud'], centro['longitud']),
-            width: 80,
-            height: 80,
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _centroSeleccionado = centro; // Guardamos los datos del punto
-                });
-              },
-              child: const Icon(
-                Icons.location_on,
-                color: Colors.green,
-                size: 45,
+      if (mounted) {
+        setState(() {
+          _centrosMarkers = centros.map((centro) {
+            return Marker(
+              point: LatLng(centro['latitud'], centro['longitud']),
+              width: 50,
+              height: 50,
+              child: GestureDetector(
+                onTap: () => setState(() => _centroSeleccionado = centro),
+                child: const Icon(
+                  Icons.location_on,
+                  color: Colors.green,
+                  size: 45,
+                ),
               ),
-            ),
-          );
-        }).toList();
-      });
+            );
+          }).toList();
+        });
+      }
     } catch (e) {
       debugPrint("Error al cargar centros: $e");
     }
   }
+
+  // --- DISEÑO DE INTERFAZ ---
 
   @override
   Widget build(BuildContext context) {
@@ -101,8 +124,8 @@ class _MapScreenState extends State<MapScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green[700],
-        centerTitle: true, // Esto centra el título, se ve muy bien en Android e iOS
-        elevation: 2,      // Le da una pequeña sombra para separarla del mapa
+        centerTitle: true,
+        elevation: 4,
       ),
       body: Stack(
         children: [
@@ -110,24 +133,35 @@ class _MapScreenState extends State<MapScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: const LatLng(20.1010, -98.7591), // Pachuca
+              initialCenter: const LatLng(20.1010, -98.7591), // Centro de Pachuca
               initialZoom: 13,
-              onTap: (_, _) {
-                // Si tocas cualquier otra parte del mapa, se cierra el panel
-                setState(() => _centroSeleccionado = null);
-              },
+              onTap: (_, _) => setState(() => _centroSeleccionado = null),
             ),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                // Añade esta línea con el nombre de tu paquete (el que está en tu pubspec o AndroidManifest)
-                userAgentPackageName: 'com.example.reciclapp', 
+                userAgentPackageName: 'com.example.reciclapp',
               ),
-              MarkerLayer(markers: _markers),
+              MarkerLayer(
+                markers: [
+                  ..._centrosMarkers, // Marcadores de la BD
+                  if (_ubicacionUsuario != null)
+                    Marker(
+                      point: _ubicacionUsuario!,
+                      width: 60,
+                      height: 60,
+                      child: const Icon(
+                        Icons.my_location,
+                        color: Colors.blue,
+                        size: 35,
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
 
-          // Capa 2: Panel de Información (Solo si hay selección)
+          // Capa 2: Panel de Información inferior
           if (_centroSeleccionado != null)
             Positioned(
               bottom: 20,
@@ -135,22 +169,32 @@ class _MapScreenState extends State<MapScreen> {
               right: 15,
               child: _buildInfoCard(),
             ),
+            
+          // Botón flotante para centrar ubicación
+          Positioned(
+            bottom: _centroSeleccionado != null ? 220 : 20,
+            right: 15,
+            child: FloatingActionButton(
+              backgroundColor: Colors.white,
+              onPressed: () {
+                if (_ubicacionUsuario != null) {
+                  _mapController.move(_ubicacionUsuario!, 15);
+                }
+              },
+              child: const Icon(Icons.gps_fixed, color: Colors.blue),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // Widget del recuadro de información
   Widget _buildInfoCard() {
     return Card(
-      elevation: 10,
+      elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: Colors.white,
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,9 +204,8 @@ class _MapScreenState extends State<MapScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    _centroSeleccionado['nombre'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
+                    _centroSeleccionado['nombre'] ?? "Sin nombre",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(
@@ -172,35 +215,22 @@ class _MapScreenState extends State<MapScreen> {
               ],
             ),
             const Divider(),
-            const SizedBox(height: 5),
-            Row(
-              children: [
-                const Icon(Icons.eco, color: Colors.green),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    "Aceptan: ${_centroSeleccionado['tipo_residuo']}",
-                    style: TextStyle(color: Colors.grey[800]),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.location_pin, color: Colors.redAccent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _centroSeleccionado['direccion'] ?? "Pachuca, Hidalgo",
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ),
-              ],
-            ),
+            _infoRow(Icons.eco, "Reciben: ${_centroSeleccionado['tipo_residuo']}"),
+            const SizedBox(height: 8),
+            _infoRow(Icons.location_pin, _centroSeleccionado['direccion'] ?? "Pachuca, Hgo."),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.green, size: 20),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+      ],
     );
   }
 }

@@ -436,6 +436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ListTile(
               leading: const Icon(Icons.help_outline),
               title: const Text("Centro de Ayuda"),
+              subtitle: const Text("Quejas y sugerencias"),
               onTap: () {
                 // Aquí podrías abrir un link o enviar un correo
               },
