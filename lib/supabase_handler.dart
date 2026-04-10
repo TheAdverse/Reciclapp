@@ -79,4 +79,14 @@ class SupabaseHandler {
         .eq('id_usuario', user.id);
   }
 
+  Future<void> cambiarPassword(String nuevaPassword) async {
+    try {
+      await supabase.auth.updateUser(
+        UserAttributes(password: nuevaPassword),
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar la contraseña: $e');
+    }
+  }
+
 }

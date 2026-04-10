@@ -49,7 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () { /* Navegar a ajustes generales */ },
+            onPressed: _mostrarAjustesGenerales,
           ),
         ],
       ),
@@ -102,15 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.lock_outline,
               title: 'Seguridad',
               subtitle: 'Cambiar contraseña',
-              onTap: () { /* Lógica de cambio de clave */ },
+              onTap: _mostrarDialogoCambiarPassword,
             ),
-            _buildProfileOption(
-              icon: Icons.settings_outlined,
-              title: 'Preferencias',
-              subtitle: 'Idioma y personalización',
-              onTap: () { /* Otros ajustes */ },
-            ),
-            
+          
             const SizedBox(height: 30),
             
             // Botón de Cerrar Sesión
@@ -275,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Notificaciones Locales", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text("Notificaciones", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               SwitchListTile(
                 title: const Text("Días de Recolección"),
@@ -297,6 +291,157 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+
+  void _mostrarDialogoCambiarPassword() {
+    final TextEditingController passController = TextEditingController();
+    final TextEditingController confirmPassController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    
+    // Variables locales para el estado del "ojito"
+    bool obscurePass = true;
+    bool obscureConfirm = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder( // <--- Vital para que el setState funcione en el diálogo
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Seguridad"),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView( // Por si el teclado estorba
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Ingresa tu nueva clave para Reciclapp:"),
+                  const SizedBox(height: 20),
+                  
+                  // --- NUEVA CONTRASEÑA ---
+                  TextFormField(
+                    controller: passController,
+                    obscureText: obscurePass,
+                    decoration: InputDecoration(
+                      labelText: 'Nueva Contraseña',
+                      prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscurePass ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setDialogState(() => obscurePass = !obscurePass),
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                    validator: (value) => value!.length < 6 ? 'Mínimo 6 caracteres' : null,
+                  ),
+                  
+                  const SizedBox(height: 15),
+                  
+                  // --- CONFIRMAR CONTRASEÑA ---
+                  TextFormField(
+                    controller: confirmPassController,
+                    obscureText: obscureConfirm,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmar Contraseña',
+                      prefixIcon: const Icon(Icons.lock_reset),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                    validator: (value) => value != passController.text ? 'No coinciden' : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancelar"),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  try {
+                    await _handler.cambiarPassword(passController.text);
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Contraseña actualizada correctamente"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    // Aquí puedes mostrar un error más específico
+                  }
+                }
+              },
+              child: const Text("Guardar"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  // Función para mostrar los ajustes
+  void _mostrarAjustesGenerales() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Ajustes Generales", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text("Versión de la App"),
+              subtitle: const Text("v1.0.0 - Reciclapp Pachuca"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.storage_outlined),
+              title: const Text("Limpiar datos locales"),
+              subtitle: const Text("Restablece preferencias de notificaciones"),
+              onTap: () async {
+                // Lógica para limpiar SharedPreferences
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                if (!mounted) return;
+                setState(() {
+                  _notifRecoleccion = true; // Valor por defecto
+                  _notifAlertas = true;     // Valor por defecto
+                });
+
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Preferencias restablecidas"),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text("Centro de Ayuda"),
+              onTap: () {
+                // Aquí podrías abrir un link o enviar un correo
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
