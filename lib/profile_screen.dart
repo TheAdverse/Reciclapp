@@ -413,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ListTile(
               leading: const Icon(Icons.storage_outlined),
               title: const Text("Limpiar datos locales"),
-              subtitle: const Text("Restablece preferencias de notificaciones"),
+              subtitle: const Text("Restablece preferencias"),
               onTap: () async {
                 // Lógica para limpiar SharedPreferences
                 final prefs = await SharedPreferences.getInstance();

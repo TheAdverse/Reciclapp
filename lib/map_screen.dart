@@ -15,6 +15,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final supabase = Supabase.instance.client;
   final MapController _mapController = MapController();
+  bool _cargando = true;
   
   // Estado del Mapa
   List<Marker> _centrosMarkers = [];
@@ -67,6 +68,7 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         setState(() {
           _ubicacionUsuario = LatLng(position.latitude, position.longitude);
+          _cargando = false;
         });
       }
     });
@@ -76,9 +78,19 @@ class _MapScreenState extends State<MapScreen> {
       Position initialPos = await Geolocator.getCurrentPosition();
       if (mounted) {
         _mapController.move(LatLng(initialPos.latitude, initialPos.longitude), 14);
+        setState(() => _cargando = false);
       }
     } catch (e) {
       debugPrint("Error obteniendo posición inicial: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error obteniendo posición inicial"),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      setState(() => _cargando = false);
     }
   }
 
@@ -110,6 +122,14 @@ class _MapScreenState extends State<MapScreen> {
       }
     } catch (e) {
       debugPrint("Error al cargar centros: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error al cargar centros"),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -171,19 +191,48 @@ class _MapScreenState extends State<MapScreen> {
             ),
             
           // Botón flotante para centrar ubicación
-          Positioned(
-            bottom: _centroSeleccionado != null ? 220 : 20,
-            right: 15,
-            child: FloatingActionButton(
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (_ubicacionUsuario != null) {
-                  _mapController.move(_ubicacionUsuario!, 15);
-                }
-              },
-              child: const Icon(Icons.gps_fixed, color: Colors.blue),
+          if (!_cargando)
+            Positioned(
+              bottom: _centroSeleccionado != null ? 220 : 20,
+              right: 15,
+              child: FloatingActionButton(
+                backgroundColor: Colors.white,
+                onPressed: () {
+                  if (_ubicacionUsuario != null) {
+                    _mapController.move(_ubicacionUsuario!, 15);
+                  }
+                },
+                child: const Icon(Icons.gps_fixed, color: Colors.blue),
+              ),
             ),
-          ),
+
+          if (_cargando)
+            Container(
+              color: Colors.black.withValues(alpha: 0.3), // Fondo semitransparente
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: Colors.green,
+                      strokeWidth: 5,
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        "Localizando puntos de reciclaje...",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
