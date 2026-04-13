@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'supabase_handler.dart';
 import 'main_screen.dart';
+import 'dart:async';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -57,6 +58,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submitForm() async {
+    bool hayRed = await _handler.tieneInternet();
+    if (!hayRed) {
+      _mostrarBloqueoSinInternet();
+      return; // No deja que el código avance a Supabase
+    }
+
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
@@ -206,4 +213,46 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
+
+  void _mostrarBloqueoSinInternet() {
+    // Creamos un timer que cheque la conexión cada 3 segundos
+    Timer? timer;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        // Iniciamos el timer cuando se construye el diálogo
+        timer = Timer.periodic(const Duration(seconds: 3), (t) async {
+          bool conectado = await _handler.tieneInternet();
+          if (conectado) {
+            t.cancel(); // Detenemos el timer
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context); // Quitamos el mensaje automáticamente
+            }
+          }
+        });
+
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Column(
+              children: [
+                Icon(Icons.signal_wifi_connected_no_internet_4_rounded, color: Colors.orange, size: 50),
+                SizedBox(height: 10),
+                Text("Conexión Inestable", style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text(
+              "Detectamos que no tienes saldo o señal suficiente.\n\nEl mensaje se quitará solo cuando recuperes tu conexión.",
+              textAlign: TextAlign.center,
+            ),
+            // Quitamos los botones para que sea puramente automático
+          ),
+        );
+      },
+    ).then((_) => timer?.cancel()); // Por seguridad, cancelamos el timer si el diálogo se cierra
+  }
+
 }

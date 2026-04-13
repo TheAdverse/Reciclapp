@@ -1,4 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:io';
 
 class SupabaseHandler {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -156,5 +158,25 @@ class SupabaseHandler {
         .eq('id_usuario', userId)
         .order('fecha_hora', ascending: false)
         .limit(15);
+  }
+
+  Future<bool> tieneInternet() async {
+    final List<ConnectivityResult> connectivityResult = await (Connectivity().checkConnectivity());
+    
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      return false;
+    }
+    // Si llegamos aquí, los datos o wifi están prendidos. 
+    // Ahora verificamos si realmente hay navegación (saldo/señal).
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+        return true; // Hay internet real
+      }
+    } on SocketException catch (_) {
+      return false; // Están prendidos los datos pero no hay internet (sin saldo)
+    }
+    
+    return false;
   }
 }
