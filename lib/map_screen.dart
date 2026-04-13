@@ -27,9 +27,11 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void initState() {
-    super.initState();
-    _fetchCentros();           // Trae los puntos de Pachuca desde Supabase
-    _configurarSeguimiento();  // Inicia el GPS en tiempo real
+    super.initState();           // Trae los puntos de Pachuca desde Supabase
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _configurarSeguimiento();
+      _fetchCentros();
+    });
   }
 
   @override
@@ -42,23 +44,44 @@ class _MapScreenState extends State<MapScreen> {
   // --- LÓGICA DE UBICACIÓN ---
 
   Future<void> _configurarSeguimiento() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // Verificar si el GPS está activo
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    // Gestionar permisos
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+    // 1. Verificamos si el GPS está prendido físicamente
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) setState(() => _cargando = false);
+      return;
     }
 
-    if (permission == LocationPermission.deniedForever) return;
+    // 2. Solo revisamos el estatus (NO usamos .request() aquí)
+    LocationPermission permission = await Geolocator.checkPermission();
+    
+    // Si no tenemos permiso, no hacemos nada y dejamos que MainScreen lo gestione
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      debugPrint("Mapa esperando permisos de MainScreen...");
+      return;
+    }
 
-    // Configurar el Stream (Se activa cada 5 metros)
+    // 3. Si ya hay permiso, obtenemos la posición INICIAL de una vez
+    try {
+      Position initialPos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 10), // Aquí defines el tiempo de espera
+      ));
+
+      if (mounted) {
+        setState(() {
+          _ubicacionUsuario = LatLng(initialPos.latitude, initialPos.longitude);
+          _cargando = false;
+        });
+        _mapController.move(_ubicacionUsuario!, 15);
+      }
+    } catch (e) {
+      debugPrint("Error obteniendo posición inicial: $e");
+      Future.delayed(const Duration(seconds: 2), () => _configurarSeguimiento());
+    }
+
+    // 4. Activamos el Stream para que el marcador se mueva con el usuario
+    _positionStream?.cancel();
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -72,26 +95,6 @@ class _MapScreenState extends State<MapScreen> {
         });
       }
     });
-
-    // Obtener posición inicial para centrar el mapa al abrir
-    try {
-      Position initialPos = await Geolocator.getCurrentPosition();
-      if (mounted) {
-        _mapController.move(LatLng(initialPos.latitude, initialPos.longitude), 14);
-        setState(() => _cargando = false);
-      }
-    } catch (e) {
-      debugPrint("Error obteniendo posición inicial: $e");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error obteniendo posición inicial"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      setState(() => _cargando = false);
-    }
   }
 
   // --- LÓGICA DE DATOS (SUPABASE) ---
@@ -139,13 +142,19 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Centros de Reciclaje",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.green[700],
+        title: const Text("Centros de Reciclaje"),
         centerTitle: true,
-        elevation: 4,
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 15),
+            child: IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white54, size: 28),
+              onPressed:  _fetchCentros,
+            ),
+          )
+        ],
       ),
       body: Stack(
         children: [
@@ -156,6 +165,7 @@ class _MapScreenState extends State<MapScreen> {
               initialCenter: const LatLng(20.1010, -98.7591), // Centro de Pachuca
               initialZoom: 13,
               onTap: (_, _) => setState(() => _centroSeleccionado = null),
+              onMapReady: () => _configurarSeguimiento(),
             ),
             children: [
               TileLayer(

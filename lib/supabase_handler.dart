@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseHandler {
   final SupabaseClient supabase = Supabase.instance.client;
 
-  // Función para Registro
+  // --- AUTH & PERFIL ---
+
   Future<void> signUpUser({
     required String email,
     required String password,
@@ -11,7 +12,6 @@ class SupabaseHandler {
     required String apellido,
     required String username,
   }) async {
-    // 1. Crear usuario en Auth
     final AuthResponse res = await supabase.auth.signUp(
       email: email,
       password: password,
@@ -19,46 +19,62 @@ class SupabaseHandler {
 
     final String? userId = res.user?.id;
 
-    // 2. Insertar datos adicionales en la tabla 'usuario'
     if (userId != null) {
       await supabase.from('usuario').insert({
         'id_usuario': userId,
         'nombre_completo': '$nombre $apellido',
         'nombre_usuario': username,
         'puntos': 0,
-        'premium': 'false',
+        'premium': false, // Optimización: usar booleano real si tu columna lo permite
       });
     }
   }
 
-  // Función para Login
   Future<void> signInUser(String email, String password) async {
-  try {
-    await supabase.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-  } on AuthException catch (error) {
-    // Re-lanzamos el error para que el UI lo atrape
-    throw error.message; 
+    try {
+      await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+    } on AuthException catch (error) {
+      throw error.message; 
+    }
   }
-}
 
-  // Cerrar sesión
   Future<void> signOut() async {
     await supabase.auth.signOut();
   }
 
-  // Obtener datos del perfil del usuario actual
+  // OPTIMIZACIÓN: Función única para la PointsScreen (Nombre + Puntos)
+  Future<Map<String, dynamic>> obtenerDatosPerfil() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return {'nombre': 'Usuario', 'puntos': 0};
+
+    try {
+      final data = await supabase
+          .from('usuario')
+          .select('nombre_completo, puntos')
+          .eq('id_usuario', user.id)
+          .single();
+      
+      return {
+        'nombre': data['nombre_completo'] ?? 'Usuario',
+        'puntos': data['puntos'] ?? 0,
+      };
+    } catch (e) {
+      return {'nombre': 'Usuario', 'puntos': 0};
+    }
+  }
+
+  // Mantenemos esta por si la usas en otra parte
   Future<Map<String, dynamic>?> getUserProfile() async {
     final user = supabase.auth.currentUser;
     if (user != null) {
-      final data = await supabase
+      return await supabase
           .from('usuario')
           .select()
           .eq('id_usuario', user.id)
           .single();
-      return data;
     }
     return null;
   }
@@ -89,4 +105,56 @@ class SupabaseHandler {
     }
   }
 
+  // --- LÓGICA DE RECICLAJE ---
+
+  Future<Map<String, dynamic>?> registrarReciclaje(String code) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final hace24Horas = DateTime.now().subtract(const Duration(hours: 24)).toIso8601String();
+
+    // 1. Validar si ya escaneó este código hoy
+    final registroExistente = await supabase
+        .from('registro_escaneo')
+        .select()
+        .eq('id_usuario', userId)
+        .eq('codigo_barras', code)
+        .gt('fecha_hora', hace24Horas)
+        .maybeSingle();
+
+    if (registroExistente != null) {
+      return registroExistente; // Retornamos el registro previo para identificar el error
+    }
+
+    // 2. Buscar producto
+    final producto = await supabase
+        .from('reciclable')
+        .select()
+        .eq('codigo_barras', code)
+        .maybeSingle();
+
+    if (producto == null) return null;
+
+    // 3. Insertar nuevo registro
+    await supabase.from('registro_escaneo').insert({
+      'id_usuario': userId,
+      'codigo_barras': code,
+      'puntos_obtenidos': producto['puntos_recompensa'], // Asegúrate que en la DB se llame puntos_obtenidos
+      'fecha_hora': DateTime.now().toIso8601String(),
+    });
+    
+    return producto;
+  }
+
+  Future<List<dynamic>> obtenerHistorialEscaneos() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return [];
+
+    return await supabase
+        .from('registro_escaneo')
+        .select('*, reciclable(nombre_producto, tipo_material)')
+        .eq('id_usuario', userId)
+        .order('fecha_hora', ascending: false)
+        .limit(15);
+  }
 }

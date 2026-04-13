@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'supabase_handler.dart';
 import 'auth_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,8 +19,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProfile();
-    _cargarPreferenciasLocales();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadProfile();
+      _cargarPreferencias();
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -46,9 +49,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Mi Perfil'),
         centerTitle: true,
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings, color: Colors.white54),
             onPressed: _mostrarAjustesGenerales,
           ),
         ],
@@ -236,59 +241,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  bool _notifRecoleccion = true;
-  bool _notifAlertas = true;
+  bool _notifTips = true;
+  bool _notifRacha = true;
+  bool _notifComunidad = true;
 
-  // Carga los datos guardados en el disco
-  Future<void> _cargarPreferenciasLocales() async {
+  // 2. Carga los datos guardados en el dispositivo
+  Future<void> _cargarPreferencias() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      // Si es la primera vez (null), ponemos true por defecto
-      _notifRecoleccion = prefs.getBool('notif_recoleccion') ?? true;
-      _notifAlertas = prefs.getBool('notif_alertas') ?? true;
+      _notifTips = prefs.getBool('notif_tips') ?? true;
+      _notifRacha = prefs.getBool('notif_racha') ?? true;
+      _notifComunidad = prefs.getBool('notif_comunidad') ?? true;
     });
   }
 
-  // Guarda los datos en el disco
+  // 3. Guarda los datos en el dispositivo
   Future<void> _guardarPreferencia(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
   }
 
+  // 4. Ventana Modal de Ajustes
   void _mostrarAjustesNotificaciones() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // Por si agregas más opciones después
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical( // <--- BorderRadius, no Radius
-          top: Radius.circular(20),          // <--- Aquí sí va Radius
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20),
         ),
       ),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 30.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Notificaciones", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
+              const Text(
+                "Configurar Notificaciones", 
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+              ),
+              const SizedBox(height: 15),
+              
+              // --- SECCIÓN DE TIPS ---
               SwitchListTile(
-                title: const Text("Días de Recolección"),
-                value: _notifRecoleccion,
+                title: const Text("Tips de Reciclaje"),
+                subtitle: const Text("Consejos aleatorios cada día"),
+                activeThumbColor: Colors.green,
+                value: _notifTips,
                 onChanged: (bool value) {
-                  _guardarPreferencia('notif_recoleccion', value);
-                  setModalState(() => _notifRecoleccion = value);
-                  setState(() {}); // Actualiza la pantalla de fondo
+                  _guardarPreferencia('notif_tips', value);
+                  setModalState(() => _notifTips = value);
+                  setState(() {}); // Actualiza la UI de fondo si es necesario
                 },
               ),
+
+              // --- SECCIÓN DE RACHA ---
               SwitchListTile(
-                title: const Text("Alertas Críticas"),
-                value: _notifAlertas,
+                title: const Text("Recordatorios de Racha"),
+                subtitle: const Text("¡No pierdas tu progreso!"),
+                activeThumbColor: Colors.green,
+                value: _notifRacha,
                 onChanged: (bool value) {
-                  _guardarPreferencia('notif_alertas', value);
-                  setModalState(() => _notifAlertas = value);
+                  _guardarPreferencia('notif_racha', value);
+                  setModalState(() => _notifRacha = value);
                   setState(() {});
                 },
               ),
+
+              // --- SECCIÓN DE COMUNIDAD (FIREBASE) ---
+              SwitchListTile(
+                title: const Text("Alertas de la Comunidad"),
+                subtitle: const Text("Noticias importantes y eventos"),
+                activeThumbColor: Colors.green,
+                value: _notifComunidad,
+                onChanged: (bool value) {
+                  _guardarPreferencia('notif_comunidad', value);
+                  setModalState(() => _notifComunidad = value);
+                  setState(() {
+                    if (value) {
+                      FirebaseMessaging.instance.subscribeToTopic("alertas");
+                    } else {
+                      FirebaseMessaging.instance.unsubscribeFromTopic("alertas");
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -392,60 +431,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Función para mostrar los ajustes
   void _mostrarAjustesGenerales() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Ajustes Generales", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text("Versión de la App"),
-              subtitle: const Text("v1.0.0 - Reciclapp Pachuca"),
-            ),
-            ListTile(
-              leading: const Icon(Icons.storage_outlined),
-              title: const Text("Limpiar datos locales"),
-              subtitle: const Text("Restablece preferencias"),
-              onTap: () async {
-                // Lógica para limpiar SharedPreferences
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
-                if (!mounted) return;
-                setState(() {
-                  _notifRecoleccion = true; // Valor por defecto
-                  _notifAlertas = true;     // Valor por defecto
-                });
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text("Ajustes Generales", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Divider(),
+          
+          // Información de la App
+          ListTile(
+            leading: const Icon(Icons.info_outline, color: Colors.green),
+            title: const Text("Versión de la App"),
+            subtitle: const Text("v1.2.8 - Reciclapp"),
+          ),
 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Preferencias restablecidas"),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.help_outline),
-              title: const Text("Centro de Ayuda"),
-              subtitle: const Text("Quejas y sugerencias"),
-              onTap: () {
-                // Aquí podrías abrir un link o enviar un correo
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          // Limpiar Datos Locales
+          ListTile(
+            leading: const Icon(Icons.storage_outlined, color: Colors.orange),
+            title: const Text("Limpiar datos locales"),
+            subtitle: const Text("Restablece todas las preferencias a su estado original"),
+            onTap: () async {
+              final prefs = await SharedPreferences.getInstance();
+              
+              // Limpiamos todo el almacenamiento local
+              await prefs.clear();
+
+              // Si quieres ser muy estricto con Firebase al limpiar datos:
+              await FirebaseMessaging.instance.unsubscribeFromTopic("alertas");
+
+              if (!mounted) return;
+
+              // Actualizamos nuestras variables de estado a los valores por defecto
+              setState(() {
+                _notifTips = true;
+                _notifRacha = true;
+                _notifComunidad = true;
+              });
+
+              Navigator.pop(context); // Cierra el modal
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Preferencias restablecidas correctamente"),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+
+          // Centro de Ayuda
+          ListTile(
+            leading: const Icon(Icons.help_outline, color: Colors.blue),
+            title: const Text("Centro de Ayuda"),
+            subtitle: const Text("Reportar problemas o sugerencias"),
+            onTap: () {
+              // Ejemplo: Podrías abrir un formulario de Google o mail de soporte
+              // launchUrl(Uri.parse('mailto:soporte@reciclapp.com'));
+            },
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
 }
