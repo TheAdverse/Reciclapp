@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'supabase_handler.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'tips.dart';
+import 'package:flutter/services.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -88,6 +89,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   void _procesarCodigo(String? code) async {
     if (code == null || _escaneado) return;
+    HapticFeedback.mediumImpact();
     
     _timerScan?.cancel();
     setState(() {
@@ -145,6 +147,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
         children: [
           MobileScanner(
             controller: _controller,
+            scanWindow: Rect.fromCenter(
+              center: Offset(
+                MediaQuery.of(context).size.width / 2,
+                MediaQuery.of(context).size.height / 2 - 20, // Ajuste ligero por el AppBar
+              ),
+              width: 250,
+              height: 250,
+            ),
             onDetect: (capture) {
               if (!_buscandoCodigo || _escaneado || !mounted) return;
               final List<Barcode> barcodes = capture.barcodes;
@@ -219,80 +229,97 @@ class _ScannerScreenState extends State<ScannerScreen> {
     showModalBottomSheet(
       context: context,
       isDismissible: false,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 70),
-            const SizedBox(height: 15),
-            Text(nombre, 
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Text(
-                material.toUpperCase(),
-                style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text("+$puntos Puntos", 
-              style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold)
-            ),
-            const Text("Bonificación aplicada correctamente", style: TextStyle(color: Colors.grey, fontSize: 14)),
-            
-            const SizedBox(height: 25),
-
-            // --- SECCIÓN DE TIP ECOLÓGICO ---
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.lightbulb_rounded, color: Colors.blue[700]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      "Tip: $consejoAleatorio",
-                      style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      // isScrollControlled: true es CLAVE para evitar el overflow en BottomSheets
+      isScrollControlled: true, 
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30))
+      ),
+      builder: (context) => Padding(
+        // Este padding asegura que el pop-up no quede detrás del teclado o barras del sistema
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(30),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.green, size: 70),
+                const SizedBox(height: 15),
+                Text(
+                  nombre, 
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
                 ),
-                onPressed: () { 
-                  Navigator.pop(context); 
-                  setState(() {
-                    _escaneado = false;
-                    _buscandoCodigo = false;
-                  });
-                },
-                child: const Text("Continuar", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Text(
+                    material.toUpperCase(),
+                    style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  "+$puntos Puntos", 
+                  style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold)
+                ),
+                const Text(
+                  "Bonificación aplicada correctamente", 
+                  style: TextStyle(color: Colors.grey, fontSize: 14)
+                ),
+                
+                const SizedBox(height: 25),
+
+                // --- SECCIÓN DE TIP ECOLÓGICO ---
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lightbulb_rounded, color: Colors.blue[700]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          consejoAleatorio,
+                          style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 25),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green[700],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    onPressed: () { 
+                      Navigator.pop(context); 
+                      setState(() {
+                        _escaneado = false;
+                        _buscandoCodigo = false;
+                      });
+                    },
+                    child: const Text("Continuar", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
