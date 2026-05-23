@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'supabase_handler.dart';
+import '../supabase_handler.dart';
 import 'dart:async';
 
 class PointsScreen extends StatefulWidget {

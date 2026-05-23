@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'supabase_handler.dart';
+import '../supabase_handler.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'tips.dart';
+import '../tips.dart';
 import 'package:flutter/services.dart';
 
 class ScannerScreen extends StatefulWidget {

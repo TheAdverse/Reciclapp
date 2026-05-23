@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import 'auth_screen.dart';
-import 'main_screen.dart';
+import 'screens/auth_screen.dart';
+import 'screens/main_screen.dart';
 import 'tips.dart'; 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
